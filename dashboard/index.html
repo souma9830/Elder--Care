@@ -855,8 +855,15 @@ function updateFallUI(data) {
   document.getElementById('torso-angle').textContent  = (data.torso_angle || 0) + '°';
   document.getElementById('camera-fps').textContent   = parseFloat(data.fps || 0).toFixed(1);
   document.getElementById('total-falls').textContent  = data.fall_count || 0;
-  document.getElementById('last-fall').textContent    = data.last_fall_time || 'Never';
-  document.getElementById('chip-fall-count').textContent = data.fall_count || 0;
+  
+  let formattedLastFall = 'Never';
+  if (data.last_fall_time) {
+      formattedLastFall = (typeof data.last_fall_time === 'number') 
+          ? new Date(data.last_fall_time * 1000).toLocaleString() 
+          : data.last_fall_time;
+  }
+  document.getElementById('last-fall').textContent    = formattedLastFall;
+  document.getElementById('chip-fall-count').textContent = data.falls_today !== undefined ? data.falls_today : (data.fall_count || 0);
 
   updateModuleStatus('fall-module-status', data.online);
 }

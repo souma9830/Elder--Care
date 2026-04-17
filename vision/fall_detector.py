@@ -1,9 +1,7 @@
 
-
 import cv2
 import mediapipe as mp
 import numpy as np
-import pyttsx3
 import threading
 import time
 import math
@@ -27,20 +25,13 @@ MIN_POSE_CONFIDENCE   = 0.55     # Minimum landmark visibility to trust result
 # NOTIFICATIONS CONFIG  ← Fill in your own credentials here
 # ─────────────────────────────────────────────────────────────────────────────
 
-# --- Gmail -------------------------------------------------------------------
-GMAIL_ENABLED        = True                   # Set False to disable email alerts
-GMAIL_SENDER         = "your_email@gmail.com" # Your Gmail address
-GMAIL_APP_PASSWORD   = "xxxx xxxx xxxx xxxx"  # 16-char Gmail App Password (NOT your login password)
-                                               # Generate at: myaccount.google.com → Security → App Passwords
-GMAIL_RECIPIENTS     = ["recipient@example.com"]  # List of addresses to notify
-GMAIL_SUBJECT        = "⚠️ FALL DETECTED – Immediate Attention Required"
-GMAIL_COOLDOWN_SEC   = 60                     # Min seconds between Gmail alerts
-
-# --- Telegram ----------------------------------------------------------------
-TELEGRAM_ENABLED     = True                           # Set False to disable Telegram alerts
-TELEGRAM_BOT_TOKEN   = "YOUR_BOT_TOKEN_HERE"          # From @BotFather on Telegram
-TELEGRAM_CHAT_ID     = "YOUR_CHAT_ID_HERE"            # Use @userinfobot to find your chat ID
-TELEGRAM_COOLDOWN_SEC = 30                            # Min seconds between Telegram alerts
+# ── Gmail ───────────────────────────────────────────────────────────────────────
+GMAIL_ENABLED      = False                  # Set True and fill in your real credentials to enable
+GMAIL_SENDER       = "your_email@gmail.com"
+GMAIL_APP_PASSWORD = "xxxx xxxx xxxx xxxx"  # 16-char App Password from myaccount.google.com
+GMAIL_RECIPIENTS   = ["recipient@example.com"]
+GMAIL_SUBJECT      = "⚠️ FALL DETECTED – Immediate Attention Required"
+GMAIL_COOLDOWN_SEC = 60
 
 # ─────────────────────────────────────────────────────────────────────────────
 # GMAIL NOTIFIER
@@ -131,56 +122,7 @@ class GmailNotifier:
         t.start()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# TELEGRAM NOTIFIER
-# ─────────────────────────────────────────────────────────────────────────────
-class TelegramNotifier:
-    """Sends a Telegram message via Bot API in a background thread."""
 
-    API_URL = "https://api.telegram.org/bot{token}/sendMessage"
-
-    def __init__(self):
-        self._last_sent = 0
-        self._lock = threading.Lock()
-
-    def _send(self, timestamp: str):
-        url = self.API_URL.format(token=TELEGRAM_BOT_TOKEN)
-        text = (
-            "🚨 *FALL DETECTED!*\n\n"
-            f"🕐 *Time:* `{timestamp}`\n\n"
-            "The Fall Detection System has identified a potential fall event\\.\n"
-            "Please *check on the individual immediately* and call for help if needed\\.\n\n"
-            "_— Automated Fall Detection Alert_"
-        )
-        payload = {
-            "chat_id":    TELEGRAM_CHAT_ID,
-            "text":       text,
-            "parse_mode": "MarkdownV2",
-        }
-        try:
-            resp = requests.post(url, json=payload, timeout=10)
-            if resp.status_code == 200:
-                print(f"[TELEGRAM] ✅ Alert sent at {timestamp}")
-            else:
-                print(f"[TELEGRAM] ❌ API error {resp.status_code}: {resp.text}")
-        except requests.exceptions.ConnectionError:
-            print("[TELEGRAM] ❌ No internet connection.")
-        except Exception as e:
-            print(f"[TELEGRAM] ❌ Failed to send: {e}")
-
-    def notify(self):
-        """Fire-and-forget notification with cooldown protection."""
-        if not TELEGRAM_ENABLED:
-            return
-        now = time.time()
-        with self._lock:
-            if now - self._last_sent < TELEGRAM_COOLDOWN_SEC:
-                return
-            self._last_sent = now
-
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        t = threading.Thread(target=self._send, args=(timestamp,), daemon=True)
-        t.start()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -188,9 +130,6 @@ class TelegramNotifier:
 # ─────────────────────────────────────────────────────────────────────────────
 class Announcer:
     def __init__(self):
-        self.engine = pyttsx3.init()
-        self.engine.setProperty('rate', 145)    # speech speed
-        self.engine.setProperty('volume', 1.0)
         self._last_announced = 0
         self._lock = threading.Lock()
 
@@ -203,8 +142,17 @@ class Announcer:
             self._last_announced = now
 
         def _speak():
-            self.engine.say(message)
-            self.engine.runAndWait()
+            try:
+                import pyttsx3
+                import pythoncom
+                pythoncom.CoInitialize() # Required for COM in background thread
+                engine = pyttsx3.init()
+                engine.setProperty('rate', 145)
+                engine.setProperty('volume', 1.0)
+                engine.say(message)
+                engine.runAndWait()
+            except Exception as e:
+                print(f"[TTS ALERT] {e}")
 
         t = threading.Thread(target=_speak, daemon=True)
         t.start()
@@ -431,7 +379,6 @@ def main():
     print("  Press  Q  to quit")
     print("=" * 50)
     print(f"  Gmail alerts   : {'ENABLED' if GMAIL_ENABLED else 'disabled'}")
-    print(f"  Telegram alerts: {'ENABLED' if TELEGRAM_ENABLED else 'disabled'}")
     print("=" * 50)
 
     # MediaPipe setup
@@ -460,16 +407,16 @@ def main():
         cap.read()
     time.sleep(0.3)
 
-    announcer        = Announcer()
-    detector         = FallDetector()
-    gmail_notifier   = GmailNotifier()
-    telegram_notifier = TelegramNotifier()
-    ui               = UI()
+    announcer      = Announcer()
+    detector       = FallDetector()
+    gmail_notifier = GmailNotifier()
+    ui             = UI()
 
     # FPS calculation
     prev_time = time.time()
     fps = 0.0
     debug_info = {}
+    last_post_time = 0  # throttle backend POST requests
 
     print("[INFO] Webcam opened. Monitoring for falls...")
 
@@ -512,22 +459,29 @@ def main():
         fall_confirmed = detector.update(is_fall_raw)
 
         if fall_confirmed:
-            announcer.announce("Fall detected! Please call for help!")
-            gmail_notifier.notify()       # sends e-mail (respects its own cooldown)
-            telegram_notifier.notify()    # sends Telegram message (respects its own cooldown)
+            gmail_notifier.notify()   # sends e-mail (respects its own cooldown; disabled by default)
 
-        # POST state to backend
-        try:
-            payload = {"is_fall": fall_confirmed, "confidence": confidence}
-            payload.update(debug_info)
-            requests.post("http://127.0.0.1:5000/api/fall", json=payload, timeout=0.1)
-        except Exception:
-            pass
+        # POST state to backend (throttled to every 2s, or immediately on fall)
+        now_post = time.time()
+        if fall_confirmed or (now_post - last_post_time) >= 2.0:
+            last_post_time = now_post
+            _payload = {"is_fall": bool(fall_confirmed), "confidence": float(confidence), "fps": float(fps)}
+            if not debug_info:
+                _payload["torso_angle"] = 0.0
+            else:
+                _payload.update(debug_info)
+            
+            def _send(p=_payload):
+                try:
+                    requests.post("http://127.0.0.1:5000/api/fall", json=p, timeout=2.0)
+                except Exception:
+                    pass
+            threading.Thread(target=_send, daemon=True).start()
 
         # ── Draw UI ───────────────────────────────────────────────────────────
         UI.draw_flash(frame, fall_confirmed)
         UI.draw_status_badge(frame, fall_confirmed, confidence)
-        UI.draw_notification_status(frame, GMAIL_ENABLED, TELEGRAM_ENABLED)
+        UI.draw_notification_status(frame, GMAIL_ENABLED, False)
         if debug_info:
             UI.draw_debug_panel(frame, debug_info, fps)
 
