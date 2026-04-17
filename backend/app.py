@@ -65,7 +65,8 @@ def update_fall():
     try:
         data = request.get_json()
         if 'is_fall' in data:
-            system_state['is_fall'] = data['is_fall']
+            for k, v in data.items():
+                system_state[k] = v
             system_state['last_fall_time'] = time.time()
             if data['is_fall']:
                 # Save event to logs
