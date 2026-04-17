@@ -7,8 +7,8 @@
 const char* ssid = "YOUR_WIFI_SSID";
 const char* password = "YOUR_WIFI_PASSWORD";
 
-// VERY IMPORTANT: Change this to the IP address of the PC running bridge_server.py
-const char* serverUrl = "http://192.168.1.XXX:5000/api/heartrate"; 
+// VERY IMPORTANT: Change this to the IP address of the PC running backend/app.py
+const char* serverUrl = "http://10.19.129.158:5000/api/heartrate"; 
 
 void setup() {
   Serial.begin(115200);
