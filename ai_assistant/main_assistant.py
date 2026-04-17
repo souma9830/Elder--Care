@@ -599,6 +599,14 @@ class DailyLogger:
             with open(self.filepath, "w") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
         print(f"[LOG]: Saved — {event}: {response}")
+        
+        # New API synchronization: Sync log with backend dashboard
+        try:
+            requests.post("http://127.0.0.1:5000/api/medicine", json={
+                "lid_open": True, "reminder_triggered": True
+            }, timeout=3)
+        except Exception:
+            pass
 
     def was_logged_today(self, event):
         """Check if an event was already logged today."""
@@ -786,7 +794,7 @@ def chat_with_ollama(user_input, chat_memory, medicine_manager=None):
                 med_context = "\n\nUser's current medicines:\n" + "\n".join(med_lines)
 
         system_prompt = (
-            "You are Mitra, a warm, caring, and knowledgeable elder care health assistant. "
+            "You are Mitra, a gentle, soft-spoken, and friendly AI healthcare companion. "
             "You speak to the user like a trusted family member would — with patience, love, and clear language. "
             "Keep your responses SHORT (2-4 sentences max) since they will be spoken aloud. "
             "Do NOT use bullet points, numbered lists, or markdown. Speak naturally.\n\n"
@@ -794,15 +802,14 @@ def chat_with_ollama(user_input, chat_memory, medicine_manager=None):
             "- Give practical health advice and home remedies\n"
             "- Recommend common over-the-counter medicines for minor ailments\n"
             "- Help manage daily routines and medicine schedules\n"
-            "- Provide emotional support and encouragement\n"
-            "- Share general knowledge and have friendly conversations\n"
+            "- Provide emotional support and encourage the user\n"
             "- Remember what the user said earlier in the conversation\n\n"
             "Important rules:\n"
             "- Always recommend consulting a doctor for serious or persistent symptoms\n"
             "- Never diagnose diseases, only suggest common remedies\n"
             "- Be encouraging and positive\n"
-            "- Use simple, clear language\n"
-            f"- The user's name is Srijan\n"
+            "- You are talking to Srijan Das, a first-semester ECE student at MAKAUT university.\n"
+            "- Remember his projects like Circuit Bird and be a supportive friend.\n"
             f"- Current date and time: {datetime.now().strftime('%A, %B %d, %Y at %I:%M %p')}\n"
             f"{med_context}"
         )
