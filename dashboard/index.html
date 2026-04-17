@@ -742,32 +742,31 @@ const THING_NAME = "eldercare-fall-goura";
 let prevFallState = false;
 let eventHistory = [];
 
-async function pollDweet() {
+async function pollBackend() {
   try {
-    const res = await fetch(`https://dweet.io/get/latest/dweet/for/${THING_NAME}`);
-    if (!res.ok) throw new Error("Dweet offline");
-    const json = await res.json();
-    if (json.with && json.with.length > 0) {
-      const data = json.with[0].content;
-      data.online = true; // ensure standard display logic works
+    const res = await fetch(`http://127.0.0.1:5000/api/state`);
+    if (!res.ok) throw new Error("Backend offline");
+    const data = await res.json();
+    data.online = true; // assume online if we got data
 
-      // Simulate local events that the backend used to do
-      if (data.is_fall && !prevFallState) {
-        data.last_fall_time = new Date().toLocaleString();
-        logEventLocal("fall", "🚨 FALL DETECTED — Immediate attention required!", "critical");
-      }
-      prevFallState = !!data.is_fall;
-
-      updateFallUI(data);
-      setConnBadge(true);
+    if (data.is_fall && !prevFallState) {
+      data.last_fall_time = new Date().toLocaleString();
+      logEventLocal("fall", "🚨 FALL DETECTED — Immediate attention required!", "critical");
     }
+    prevFallState = !!data.is_fall;
+
+    updateFallUI(data);
+    updateHRUI(data);
+    updateMedicineUI(data);
+    
+    setConnBadge(true);
   } catch(e) {
     setConnBadge(false);
   }
 }
 
 // Start watching!
-setInterval(pollDweet, 1500);
+setInterval(pollBackend, 1500);
 
 function setConnBadge(connected) {
   const badge = document.getElementById('conn-badge');
@@ -810,7 +809,7 @@ function loadInitialData() {
   }
   
   // Kick off first poll!
-  pollDweet();
+  pollBackend();
 }
 
 /* ══════════════════════════════════════════════════════
